@@ -2,6 +2,11 @@ import { Item, RentalRequest, ChatMessage } from '../types';
 import calculatorImg from '../assets/images/product_calculator_casio_1790930657969.jpg';
 import mathBooksImg from '../assets/images/product_engineering_books_1790930673917.jpg';
 import arduinoKitImg from '../assets/images/product_arduino_kit_1790930686650.jpg';
+import headphonesImg from '../assets/images/product_headphones_1791026231003.jpg';
+import cricketBatImg from '../assets/images/product_cricket_bat_1791026243763.jpg';
+import miniDrafterImg from '../assets/images/product_mini_drafter_1791026260459.jpg';
+import labCoatImg from '../assets/images/product_lab_coat_1791026273227.jpg';
+import badmintonImg from '../assets/images/product_badminton_rackets_1791026286086.jpg';
 
 export const STARTER_ITEMS: Item[] = [
   {
@@ -84,6 +89,7 @@ export const STARTER_ITEMS: Item[] = [
     ownerEmail: 'kiran@rguktrkv.ac.in',
     trust: 88,
     reviewsCount: 9,
+    imageUrl: headphonesImg,
     available: true,
     status: 'available',
     createdAt: '2026-09-25',
@@ -103,6 +109,7 @@ export const STARTER_ITEMS: Item[] = [
     ownerEmail: 'arjun@rguktrkv.ac.in',
     trust: 91,
     reviewsCount: 14,
+    imageUrl: cricketBatImg,
     available: true,
     status: 'available',
     createdAt: '2026-09-27',
@@ -122,6 +129,7 @@ export const STARTER_ITEMS: Item[] = [
     ownerEmail: 'pooja@rguktrkv.ac.in',
     trust: 95,
     reviewsCount: 16,
+    imageUrl: miniDrafterImg,
     available: true,
     status: 'available',
     createdAt: '2026-09-26',
@@ -141,6 +149,7 @@ export const STARTER_ITEMS: Item[] = [
     ownerEmail: 'deepak@rguktrkv.ac.in',
     trust: 89,
     reviewsCount: 7,
+    imageUrl: labCoatImg,
     available: true,
     status: 'available',
     createdAt: '2026-10-01',
@@ -160,6 +169,7 @@ export const STARTER_ITEMS: Item[] = [
     ownerEmail: 'sneha@rguktrkv.ac.in',
     trust: 93,
     reviewsCount: 11,
+    imageUrl: badmintonImg,
     available: true,
     status: 'available',
     createdAt: '2026-09-29',

@@ -40,10 +40,14 @@ function MainApp() {
     try {
       const saved = localStorage.getItem('rentReuseItems_v2');
       const raw = saved ? JSON.parse(saved) : STARTER_ITEMS;
-      return raw.map((item: any) => ({
-        ...item,
-        status: item.status || (item.available ? 'available' : 'unavailable'),
-      }));
+      return raw.map((item: any) => {
+        const starter = STARTER_ITEMS.find((s) => s.id === item.id);
+        return {
+          ...item,
+          imageUrl: item.imageUrl || starter?.imageUrl,
+          status: item.status || (item.available ? 'available' : 'unavailable'),
+        };
+      });
     } catch {
       return STARTER_ITEMS;
     }
@@ -128,22 +132,31 @@ function MainApp() {
         setItems((prevItems) => {
           const merged = prevItems.map((localItem) => {
             const remote = remoteItems.find((r) => r.id === localItem.id);
+            const starter = STARTER_ITEMS.find((s) => s.id === localItem.id);
             if (remote) {
               const status: ItemStatus = remote.status || (remote.available ? 'available' : 'unavailable');
               return {
                 ...localItem,
                 ...remote,
+                imageUrl: remote.imageUrl || localItem.imageUrl || starter?.imageUrl,
                 status,
                 available: status === 'available',
               };
             }
-            return localItem;
+            return {
+              ...localItem,
+              imageUrl: localItem.imageUrl || starter?.imageUrl,
+            };
           });
 
           // Add any remote items that were added by peers
           remoteItems.forEach((r) => {
             if (!merged.some((m) => m.id === r.id)) {
-              merged.push(r);
+              const starter = STARTER_ITEMS.find((s) => s.id === r.id);
+              merged.push({
+                ...r,
+                imageUrl: r.imageUrl || starter?.imageUrl,
+              });
             }
           });
 
