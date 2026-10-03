@@ -8,6 +8,19 @@ import {
   onAuthStateChanged,
   type User,
 } from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  collection,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+  type Firestore,
+} from 'firebase/firestore';
 
 /**
  * ============================================================================
@@ -48,6 +61,7 @@ export const isFirebaseConfigured = (): boolean => {
 // Safe initialization
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db: Firestore = getFirestore(app);
 
 export {
   createUserWithEmailAndPassword,
@@ -56,4 +70,14 @@ export {
   updateProfile,
   onAuthStateChanged,
   type User,
+  // Firestore exports
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  collection,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
 };

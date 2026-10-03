@@ -5,7 +5,7 @@ import { PlusCircle, ShieldCheck, MapPin, Star, Sparkles, CheckCircle2, Lock, Lo
 import { useAuth } from '../context/AuthContext';
 
 interface PostItemViewProps {
-  onItemPosted: (newItem: Omit<Item, 'id' | 'createdAt' | 'trust' | 'available'>) => void;
+  onItemPosted: (newItem: Omit<Item, 'id' | 'createdAt' | 'trust' | 'available' | 'status'>) => void;
   onCancel: () => void;
   onOpenAuth: (prompt?: string) => void;
 }

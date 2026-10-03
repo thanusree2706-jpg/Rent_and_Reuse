@@ -22,7 +22,9 @@ interface RequestsViewProps {
   requests: RentalRequest[];
   onAcceptRequest: (id: number) => void;
   onRejectRequest: (id: number) => void;
-  onCompleteRequest: (id: number, rating?: number, comment?: string) => void;
+  onConfirmHandover: (id: number) => void;
+  onConfirmReturn: (id: number, rating?: number, comment?: string) => void;
+  onCompleteRequest?: (id: number, rating?: number, comment?: string) => void;
   onCancelRequest: (id: number) => void;
   onBrowseClick: () => void;
   onMessageOwner: (owner: string, itemTitle: string) => void;
@@ -35,6 +37,8 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   requests,
   onAcceptRequest,
   onRejectRequest,
+  onConfirmHandover,
+  onConfirmReturn,
   onCompleteRequest,
   onCancelRequest,
   onBrowseClick,
@@ -78,15 +82,19 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   const lenderRequestsCount = requests.filter(isLenderForRequest).length;
   const borrowerRequestsCount = requests.filter(isBorrowerForRequest).length;
 
-  const handleOpenRating = (id: number) => {
+  const handleOpenReturnModal = (id: number) => {
     setRatingModalRequestId(id);
     setStars(5);
-    setFeedback('Item was in excellent condition and return was seamless!');
+    setFeedback('Item was returned in agreed condition. Security deposit refunded.');
   };
 
   const handleConfirmCompletion = () => {
     if (ratingModalRequestId !== null) {
-      onCompleteRequest(ratingModalRequestId, stars, feedback);
+      if (onConfirmReturn) {
+        onConfirmReturn(ratingModalRequestId, stars, feedback);
+      } else if (onCompleteRequest) {
+        onCompleteRequest(ratingModalRequestId, stars, feedback);
+      }
       setRatingModalRequestId(null);
     }
   };
@@ -286,7 +294,17 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                           </span>
                         )}
 
-                        {isApproved && (
+                        {isApproved && req.handedOver && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-800 bg-rose-50 px-2.5 py-0.5 rounded border border-rose-200 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Lent Out</span>
+                            <span className="font-normal text-rose-700">
+                              · Handed Over & Unavailable
+                            </span>
+                          </span>
+                        )}
+
+                        {isApproved && !req.handedOver && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200 shadow-2xs">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             <span>Approved</span>
@@ -309,7 +327,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                         {isCompleted && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200">
                             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                            <span>Completed</span>
+                            <span>Completed & Returned</span>
                           </span>
                         )}
                       </div>
@@ -361,13 +379,13 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       <span>Chat</span>
                     </button>
 
-                    {/* LENDER-ONLY ACTIONS: Accept and Reject buttons */}
+                    {/* LENDER-ONLY ACTIONS: Accept, Reject, Confirm Handover, Confirm Return */}
                     {isLender && isPending && (
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => onAcceptRequest(req.id)}
-                          className="cursor-pointer px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                          className="cursor-pointer px-3.5 py-1.5 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors shadow-xs flex items-center gap-1"
                           title="Accept this rental request as the item owner"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -375,8 +393,16 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                         </button>
                         <button
                           type="button"
+                          onClick={() => onConfirmHandover(req.id)}
+                          className="cursor-pointer px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs flex items-center gap-1"
+                          title="Confirm handover of the item to the student"
+                        >
+                          <span>Confirm Handover</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => onRejectRequest(req.id)}
-                          className="cursor-pointer px-3.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors flex items-center gap-1"
+                          className="cursor-pointer px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors flex items-center gap-1"
                           title="Reject this rental request"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -385,9 +411,34 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       </div>
                     )}
 
-                    {/* STUDENT (BORROWER) VIEW:
-                        The student account should ONLY show the request status (Pending, Approved, or Rejected)
-                        and MUST NOT show Accept or Reject buttons.
+                    {/* Owner Action: Confirm Handover when Approved and not yet handed over */}
+                    {isLender && isApproved && !req.handedOver && (
+                      <button
+                        type="button"
+                        onClick={() => onConfirmHandover(req.id)}
+                        className="cursor-pointer px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                        title="Click when you have handed over the item to the student borrower"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Confirm Handover</span>
+                      </button>
+                    )}
+
+                    {/* Owner Action: Confirm Return when item is handed over */}
+                    {isLender && req.handedOver && !isCompleted && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReturnModal(req.id)}
+                        className="cursor-pointer px-4 py-1.5 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                        title="Click when the borrower returns the item to you"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Confirm Return</span>
+                      </button>
+                    )}
+
+                    {/* BORROWER VIEW:
+                        The borrower CANNOT mark item as available or confirm return/handover.
                     */}
                     {!isLender && isPending && (
                       <button
@@ -400,16 +451,16 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       </button>
                     )}
 
-                    {/* When approved, student borrower can mark returned once finished */}
-                    {!isLender && isApproved && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRating(req.id)}
-                        className="cursor-pointer px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs flex items-center gap-1"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Mark Returned & Rate</span>
-                      </button>
+                    {!isLender && isApproved && !req.handedOver && (
+                      <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                        Approved · Meet owner for handover
+                      </span>
+                    )}
+
+                    {!isLender && req.handedOver && !isCompleted && (
+                      <span className="text-xs text-blue-700 font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200">
+                        Item with you · Return to {req.owner} when done
+                      </span>
                     )}
 
                     {isCompleted && (
@@ -419,7 +470,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                             <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                           ))}
                         </div>
-                        <span className="text-[10px] text-slate-400">Trust Rating Given</span>
+                        <span className="text-[10px] text-slate-400">Return Confirmed</span>
                       </div>
                     )}
                   </div>
@@ -448,21 +499,21 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
         </div>
       )}
 
-      {/* Rating & Completion Modal */}
+      {/* Rating & Completion Modal (Owner Confirm Return) */}
       {ratingModalRequestId !== null && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
             <h3 className="text-lg font-bold text-slate-900">
-              Complete Rental & Rate Lender
+              Confirm Item Return & Release Deposit
             </h3>
             <p className="text-xs text-slate-500">
-              Confirm that the item was returned safely, deposit refunded, and award a trust score.
+              As the item owner, confirm that the borrower returned the item in good condition. This marks the item as <strong>Available</strong> again in the catalog and refunds the security deposit.
             </p>
 
             {/* Star selector */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Trust & Experience Rating:
+                Borrower Trust & Return Condition:
               </label>
               <div className="flex items-center gap-2">
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -511,9 +562,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmCompletion}
-                className="cursor-pointer px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs"
+                className="cursor-pointer px-5 py-2 text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white rounded-lg shadow-xs flex items-center gap-1.5"
               >
-                Confirm Return & Submit Rating
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm Return & Mark Available</span>
               </button>
             </div>
           </div>

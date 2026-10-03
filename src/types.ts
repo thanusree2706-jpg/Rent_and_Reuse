@@ -1,5 +1,6 @@
 export type Category = 'Books' | 'Electronics' | 'Sports' | 'College Supplies' | 'Other';
 export type ItemCondition = 'New' | 'Good' | 'Fair';
+export type ItemStatus = 'available' | 'requested' | 'unavailable';
 export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Accepted' | 'Completed' | 'Cancelled';
 
 export interface Item {
@@ -19,6 +20,11 @@ export interface Item {
   reviewsCount?: number;
   imageUrl?: string;
   available: boolean;
+  status: ItemStatus; // 'available' | 'requested' | 'unavailable'
+  borrowedBy?: string; // borrower ID or borrower email/uid
+  borrowedByName?: string; // student display name
+  borrowedAt?: string;
+  currentRequestId?: number;
   createdAt: string;
 }
 
@@ -44,6 +50,8 @@ export interface RentalRequest {
   note?: string;
   ratingGiven?: number;
   reviewComment?: string;
+  handedOver?: boolean;
+  returned?: boolean;
 }
 
 export interface ChatMessage {

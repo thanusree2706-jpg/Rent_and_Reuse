@@ -308,7 +308,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     {getCategoryIcon(item.category)}
                   </div>
                   <div>
-                    <h5 className="text-sm font-semibold text-slate-900">{item.title}</h5>
+                    <div className="flex items-center gap-2">
+                      <h5 className="text-sm font-semibold text-slate-900">{item.title}</h5>
+                      {item.status === 'unavailable' || (!item.available && item.status !== 'requested') ? (
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                          Unavailable · Lent Out
+                        </span>
+                      ) : item.status === 'requested' ? (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          Requested
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                          Available
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
                       <span>{item.category}</span>
                       <span>·</span>

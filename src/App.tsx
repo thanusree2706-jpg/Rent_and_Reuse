@@ -20,6 +20,12 @@ import { AuthModal } from './components/AuthModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { EditItemModal } from './components/EditItemModal';
 import { Toast, ToastMessage } from './components/Toast';
+import {
+  requestItemWithAtomicCheck,
+  confirmHandoverWithAtomicCheck,
+  confirmReturnWithAtomicCheck,
+  syncItemToFirestore,
+} from './services/itemAvailabilityService';
 
 function MainApp() {
   const { currentUser, studentName, logout, switchDemoAccount } = useAuth();
@@ -31,7 +37,11 @@ function MainApp() {
   const [items, setItems] = useState<Item[]>(() => {
     try {
       const saved = localStorage.getItem('rentReuseItems_v2');
-      return saved ? JSON.parse(saved) : STARTER_ITEMS;
+      const raw = saved ? JSON.parse(saved) : STARTER_ITEMS;
+      return raw.map((item: any) => ({
+        ...item,
+        status: item.status || (item.available ? 'available' : 'unavailable'),
+      }));
     } catch {
       return STARTER_ITEMS;
     }
@@ -381,7 +391,7 @@ function MainApp() {
   );
 
   // Handler: Post Item
-  const handleItemPosted = (newItemData: Omit<Item, 'id' | 'createdAt' | 'trust' | 'available'>) => {
+  const handleItemPosted = async (newItemData: Omit<Item, 'id' | 'createdAt' | 'trust' | 'available' | 'status'>) => {
     const newItem: Item = {
       ...newItemData,
       id: Date.now(),
@@ -389,18 +399,20 @@ function MainApp() {
       trust: 85,
       reviewsCount: 1,
       available: true,
+      status: 'available',
       owner: newItemData.owner || studentName || currentUser?.displayName || 'Student',
       ownerId: currentUser?.uid,
       ownerEmail: currentUser?.email || undefined,
     };
 
     setItems((prev) => [newItem, ...prev]);
+    await syncItemToFirestore(newItem);
     addToast('Your item has been successfully posted to the campus catalog!');
     handleNavigate('browse');
   };
 
-  // Handler: Request Rent
-  const handleSubmitRentalRequest = (params: {
+  // Handler: Request Rent (Atomic to prevent simultaneous bookings)
+  const handleSubmitRentalRequest = async (params: {
     itemId: number;
     days: number;
     startDate: string;
@@ -449,9 +461,26 @@ function MainApp() {
       note: params.note || undefined,
     };
 
-    setRequests((prev) => [newRequest, ...prev]);
-    addToast(`Rental request sent to ${targetItem.owner}!`);
-    handleNavigate('requests');
+    try {
+      // Atomic request execution to prevent multiple students from successfully booking simultaneously
+      const { updatedItem, updatedRequest } = await requestItemWithAtomicCheck({
+        item: targetItem,
+        request: newRequest,
+        currentItems: items,
+      });
+
+      // Update state immediately
+      setItems((prev) => prev.map((i) => (i.id === updatedItem.id ? updatedItem : i)));
+      setRequests((prev) => [updatedRequest, ...prev]);
+
+      // Close modal
+      setSelectedItemForModal(null);
+
+      addToast(`Rental request sent to ${targetItem.owner}! Item status set to Requested.`, 'success');
+      handleNavigate('requests');
+    } catch (err: any) {
+      addToast(err.message || 'Failed to submit rental request.', 'error');
+    }
   };
 
   // Handler: Contact / Send Message
@@ -496,7 +525,72 @@ function MainApp() {
     setRequests((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: 'Approved' } : r))
     );
-    addToast(`Rental request for "${targetReq.itemTitle}" approved! Item is ready for handover.`, 'success');
+    addToast(`Rental request for "${targetReq.itemTitle}" approved! Click Confirm Handover when meeting student.`, 'success');
+  };
+
+  // Handler: Confirm Handover (ONLY the item owner can confirm handover)
+  const handleConfirmHandover = async (id: number) => {
+    const targetReq = requests.find((r) => r.id === id);
+    if (!targetReq) return;
+
+    if (!isLenderForRequest(targetReq)) {
+      addToast('Only the item owner can confirm handover.', 'error');
+      return;
+    }
+
+    try {
+      const borrowerId = targetReq.borrowerId || targetReq.borrower;
+      const borrowerName = targetReq.borrower;
+
+      const { updatedItem, updatedRequest } = await confirmHandoverWithAtomicCheck({
+        itemId: targetReq.itemId,
+        requestId: targetReq.id,
+        borrowerId,
+        borrowerName,
+        isOwner: true,
+        currentItems: items,
+        currentRequests: requests,
+      });
+
+      // Update state immediately in Browse and Requests
+      setItems((prev) => prev.map((i) => (i.id === updatedItem.id ? updatedItem : i)));
+      setRequests((prev) => prev.map((r) => (r.id === updatedRequest.id ? updatedRequest : r)));
+
+      addToast(`"${targetReq.itemTitle}" handover confirmed! Item is now Unavailable (Lent out to ${borrowerName}).`, 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Failed to confirm handover.', 'error');
+    }
+  };
+
+  // Handler: Confirm Return (ONLY the item owner can confirm return)
+  const handleConfirmReturn = async (id: number, rating?: number, comment?: string) => {
+    const targetReq = requests.find((r) => r.id === id);
+    if (!targetReq) return;
+
+    if (!isLenderForRequest(targetReq)) {
+      addToast('Only the item owner can confirm return. The borrower cannot mark their own item as available.', 'error');
+      return;
+    }
+
+    try {
+      const { updatedItem, updatedRequest } = await confirmReturnWithAtomicCheck({
+        itemId: targetReq.itemId,
+        requestId: targetReq.id,
+        isOwner: true,
+        currentItems: items,
+        currentRequests: requests,
+        rating,
+        comment,
+      });
+
+      // Update state immediately
+      setItems((prev) => prev.map((i) => (i.id === updatedItem.id ? updatedItem : i)));
+      setRequests((prev) => prev.map((r) => (r.id === updatedRequest.id ? updatedRequest : r)));
+
+      addToast(`"${targetReq.itemTitle}" return confirmed! Item is now Available again for campus peers.`, 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Failed to confirm return.', 'error');
+    }
   };
 
   // Handler: Reject Request (ONLY the lender who owns the item can reject)
@@ -512,50 +606,51 @@ function MainApp() {
     setRequests((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: 'Rejected' } : r))
     );
-    addToast(`Rental request for "${targetReq.itemTitle}" rejected.`, 'info');
-  };
 
-  // Handler: Complete Rental
-  const handleCompleteRequest = (id: number, rating?: number, comment?: string) => {
-    const targetReq = requests.find((r) => r.id === id);
-
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              status: 'Completed',
-              ratingGiven: rating || 5,
-              reviewComment: comment,
-            }
-          : r
-      )
+    // If item was requested, restore it back to available
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id === targetReq.itemId && item.status === 'requested') {
+          return {
+            ...item,
+            status: 'available',
+            available: true,
+            currentRequestId: undefined,
+            borrowedBy: undefined,
+            borrowedByName: undefined,
+          };
+        }
+        return item;
+      })
     );
 
-    // Boost owner trust score if rating given
-    if (targetReq) {
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.id === targetReq.itemId || item.owner === targetReq.owner) {
-            const currentTrust = item.trust || 85;
-            const updatedTrust = Math.min(100, currentTrust + 2);
-            return {
-              ...item,
-              trust: updatedTrust,
-              reviewsCount: (item.reviewsCount || 0) + 1,
-            };
-          }
-          return item;
-        })
-      );
-    }
-
-    addToast('Rental marked completed! Security deposit released & trust rating awarded.');
+    addToast(`Rental request for "${targetReq.itemTitle}" rejected.`, 'info');
   };
 
   // Handler: Cancel Request
   const handleCancelRequest = (id: number) => {
+    const targetReq = requests.find((r) => r.id === id);
+    if (!targetReq) return;
+
     setRequests((prev) => prev.filter((r) => r.id !== id));
+
+    // If item was requested, restore it back to available
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id === targetReq.itemId && item.status === 'requested') {
+          return {
+            ...item,
+            status: 'available',
+            available: true,
+            currentRequestId: undefined,
+            borrowedBy: undefined,
+            borrowedByName: undefined,
+          };
+        }
+        return item;
+      })
+    );
+
     addToast('Rental request cancelled.', 'info');
   };
 
@@ -609,7 +704,9 @@ function MainApp() {
             requests={requests}
             onAcceptRequest={handleAcceptRequest}
             onRejectRequest={handleRejectRequest}
-            onCompleteRequest={handleCompleteRequest}
+            onConfirmHandover={handleConfirmHandover}
+            onConfirmReturn={handleConfirmReturn}
+            onCompleteRequest={handleConfirmReturn}
             onCancelRequest={handleCancelRequest}
             onBrowseClick={() => handleNavigate('browse')}
             onMessageOwner={(owner, itemTitle) => {

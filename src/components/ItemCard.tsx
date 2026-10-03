@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Item, Category } from '../types';
-import { MapPin, Star, MessageSquare, ArrowRight, ShieldCheck, Check, Trash2, Edit3 } from 'lucide-react';
+import { Item, Category, ItemStatus } from '../types';
+import { MapPin, Star, MessageSquare, ArrowRight, ShieldCheck, Check, Trash2, Edit3, Clock, AlertCircle } from 'lucide-react';
 
 interface ItemCardProps {
   item: Item;
@@ -38,6 +38,12 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 }) => {
   const [imageError, setImageError] = useState(false);
 
+  // Normalize status
+  const status: ItemStatus = item.status || (item.available ? 'available' : 'unavailable');
+  const isAvailable = status === 'available';
+  const isRequested = status === 'requested';
+  const isUnavailable = status === 'unavailable';
+
   return (
     <div className="group bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden hover:-translate-y-0.5">
       {/* Visual Slot with Mandatory Fallback */}
@@ -61,17 +67,30 @@ export const ItemCard: React.FC<ItemCardProps> = ({
           </div>
         )}
 
-        {/* Quiet availability marker & Own Item badge */}
-        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+        {/* Status badges: Green: Available, Orange: Requested, Red: Unavailable */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 flex-wrap justify-end">
           {isOwnItem && (
             <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
               Your Item
             </span>
           )}
-          <div className="bg-slate-900/80 backdrop-blur-xs text-white text-[11px] font-medium px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            <span>Available</span>
-          </div>
+
+          {isUnavailable ? (
+            <div className="bg-rose-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1.5 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-200 animate-pulse"></span>
+              <span>Unavailable</span>
+            </div>
+          ) : isRequested ? (
+            <div className="bg-amber-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1.5 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-200 animate-pulse"></span>
+              <span>Requested</span>
+            </div>
+          ) : (
+            <div className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1.5 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-200"></span>
+              <span>Available</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -125,21 +144,48 @@ export const ItemCard: React.FC<ItemCardProps> = ({
           </div>
         </div>
 
-        {/* Owner Name */}
-        <div className="mt-1 text-[11px] text-slate-400">
-          Lender: <span className="font-medium text-slate-700">{item.owner}</span>
+        {/* Owner Name & Lent Out Details */}
+        <div className="mt-1 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Lender: <strong className="font-medium text-slate-700">{item.owner}</strong></span>
+          {isUnavailable && (
+            <span className="text-rose-600 font-semibold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+              Currently Lent Out
+            </span>
+          )}
         </div>
 
         {/* Actions */}
         <div className="mt-4 pt-2 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => onViewDetails(item)}
-            className="cursor-pointer w-full py-2 px-3 text-xs font-semibold rounded-lg bg-blue-700 hover:bg-blue-800 text-white transition-colors flex items-center justify-center gap-1 shadow-xs"
-          >
-            <span>View & Rent</span>
-            <ArrowRight className="w-3 h-3" />
-          </button>
+          {isUnavailable ? (
+            <button
+              type="button"
+              onClick={() => onViewDetails(item)}
+              className="cursor-pointer w-full py-2 px-3 text-xs font-semibold rounded-lg bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1 shadow-xs"
+              title="Currently Lent Out - Click to view specifications"
+            >
+              <Clock className="w-3 h-3 text-rose-600" />
+              <span>Currently Lent Out</span>
+            </button>
+          ) : isRequested ? (
+            <button
+              type="button"
+              onClick={() => onViewDetails(item)}
+              className="cursor-pointer w-full py-2 px-3 text-xs font-semibold rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1 shadow-xs"
+              title="Requested by a student - Click to view details"
+            >
+              <Clock className="w-3 h-3 text-amber-600" />
+              <span>Requested</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onViewDetails(item)}
+              className="cursor-pointer w-full py-2 px-3 text-xs font-semibold rounded-lg bg-blue-700 hover:bg-blue-800 text-white transition-colors flex items-center justify-center gap-1 shadow-xs"
+            >
+              <span>View & Rent</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
 
           <button
             type="button"
@@ -190,3 +236,4 @@ export const ItemCard: React.FC<ItemCardProps> = ({
     </div>
   );
 };
+

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Item } from '../types';
+import { Item, ItemStatus } from '../types';
 import { getCategoryIcon } from './ItemCard';
-import { X, MapPin, Star, ShieldCheck, Calendar, Info, Clock, CheckCircle2, MessageSquare, LogIn, Trash2, Edit3 } from 'lucide-react';
+import { X, MapPin, Star, ShieldCheck, Calendar, Info, Clock, CheckCircle2, MessageSquare, LogIn, Trash2, Edit3, Ban, AlertTriangle } from 'lucide-react';
 
 interface ItemModalProps {
   item: Item | null;
@@ -43,6 +43,12 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [note, setNote] = useState('');
   const [imageError, setImageError] = useState(false);
 
+  // Status calculation
+  const status: ItemStatus = item.status || (item.available ? 'available' : 'unavailable');
+  const isAvailable = status === 'available';
+  const isRequested = status === 'requested';
+  const isUnavailable = status === 'unavailable';
+
   const totalRent = item.rent * days;
   const totalUpfront = totalRent + item.deposit;
 
@@ -51,6 +57,18 @@ export const ItemModal: React.FC<ItemModalProps> = ({
 
     if (!isLoggedIn) {
       onRequireLogin?.('Please sign in with your student account to request this rental.');
+      return;
+    }
+
+    if (isUnavailable) {
+      return;
+    }
+
+    if (isRequested) {
+      return;
+    }
+
+    if (isOwnItem) {
       return;
     }
 
@@ -84,13 +102,33 @@ export const ItemModal: React.FC<ItemModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/50 transition-colors"
-            aria-label="Close dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Status Badges: Green, Orange, Red */}
+            {isUnavailable ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-rose-600 px-3 py-1 rounded-full shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-rose-200 animate-pulse"></span>
+                <span>Unavailable · Currently Lent Out</span>
+              </span>
+            ) : isRequested ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-amber-600 px-3 py-1 rounded-full shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-amber-200 animate-pulse"></span>
+                <span>Requested · Pending Handover</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-600 px-3 py-1 rounded-full shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-200"></span>
+                <span>Available</span>
+              </span>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/50 transition-colors"
+              aria-label="Close dialog"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -157,6 +195,18 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {isUnavailable && (
+                  <div className="flex items-center justify-between bg-rose-50 p-2 rounded border border-rose-200 text-rose-900 text-[11px]">
+                    <span className="font-bold flex items-center gap-1">
+                      <Ban className="w-3.5 h-3.5 text-rose-600" />
+                      Status:
+                    </span>
+                    <span className="font-semibold">
+                      Currently Lent Out {item.borrowedByName ? `to ${item.borrowedByName}` : ''}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2">
@@ -198,12 +248,13 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                     <button
                       key={d}
                       type="button"
+                      disabled={isUnavailable || isRequested}
                       onClick={() => setDays(d)}
                       className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
                         days === d
                           ? 'bg-blue-700 text-white border-blue-700'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                      }`}
+                      } ${isUnavailable || isRequested ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       {d}d
                     </button>
@@ -215,9 +266,10 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                     type="number"
                     min="1"
                     max="60"
+                    disabled={isUnavailable || isRequested}
                     value={days}
                     onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 1))}
-                    className="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-900"
+                    className="w-20 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   <span className="text-xs text-slate-500">days</span>
                 </div>
@@ -230,9 +282,10 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                 </label>
                 <input
                   type="date"
+                  disabled={isUnavailable || isRequested}
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
                   required
                 />
                 <span className="text-[11px] text-slate-400 mt-1 block">
@@ -248,10 +301,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               </label>
               <input
                 type="text"
+                disabled={isUnavailable || isRequested}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="e.g. Preparing for Friday engineering lab exam, can meet at library..."
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-600 disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -277,6 +331,31 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                 </span>
               </div>
             </div>
+
+            {/* Availability Alert Banners */}
+            {isUnavailable && (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5">
+                <Ban className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block text-sm">Currently Lent Out</span>
+                  <p className="mt-0.5 text-rose-700 leading-relaxed">
+                    This item has been handed over to another student and is currently unavailable. Another student cannot borrow it until the owner confirms return.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {isRequested && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block text-sm">Item Currently Requested</span>
+                  <p className="mt-0.5 text-amber-700 leading-relaxed">
+                    A rental request has already been placed for this item. Simultaneous requests are prevented to protect item availability.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Login Warning if unauthenticated */}
             {!isLoggedIn && (
@@ -343,12 +422,41 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="cursor-pointer px-6 py-2.5 text-xs font-bold rounded-lg bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-sm flex items-center gap-1.5"
-                >
-                  <span>Request to Rent for ₹{totalRent}</span>
-                </button>
+
+                {isUnavailable ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed px-6 py-2.5 text-xs font-bold rounded-lg bg-slate-200 text-slate-500 border border-slate-300 flex items-center gap-1.5"
+                  >
+                    <Ban className="w-4 h-4 text-slate-400" />
+                    <span>Currently Lent Out</span>
+                  </button>
+                ) : isRequested ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed px-6 py-2.5 text-xs font-bold rounded-lg bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1.5"
+                  >
+                    <Clock className="w-4 h-4 text-amber-600" />
+                    <span>Already Requested</span>
+                  </button>
+                ) : isOwnItem ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="cursor-not-allowed px-6 py-2.5 text-xs font-bold rounded-lg bg-slate-100 text-slate-400 border border-slate-200 flex items-center gap-1.5"
+                  >
+                    <span>Your Own Item</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="cursor-pointer px-6 py-2.5 text-xs font-bold rounded-lg bg-blue-700 hover:bg-blue-800 text-white transition-all shadow-sm flex items-center gap-1.5"
+                  >
+                    <span>Request to Rent for ₹{totalRent}</span>
+                  </button>
+                )}
               </div>
             </div>
           </form>
@@ -357,3 +465,4 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     </div>
   );
 };
+
