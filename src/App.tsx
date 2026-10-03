@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Item, RentalRequest, ChatMessage } from './types';
+import { Item, RentalRequest, ChatMessage, ItemStatus } from './types';
 import { STARTER_ITEMS, STARTER_REQUESTS, STARTER_MESSAGES } from './data/starterData';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar, NavTab } from './components/Navbar';
@@ -25,6 +25,8 @@ import {
   confirmHandoverWithAtomicCheck,
   confirmReturnWithAtomicCheck,
   syncItemToFirestore,
+  subscribeToFirestoreItems,
+  subscribeToFirestoreRequests,
 } from './services/itemAvailabilityService';
 
 function MainApp() {
@@ -118,6 +120,68 @@ function MainApp() {
 
   // Toast notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Live Firestore Synchronization: ensures BrowseView reads remote Firestore item status and refreshes after transactions
+  useEffect(() => {
+    const unsubItems = subscribeToFirestoreItems((remoteItems) => {
+      if (remoteItems && remoteItems.length > 0) {
+        setItems((prevItems) => {
+          const merged = prevItems.map((localItem) => {
+            const remote = remoteItems.find((r) => r.id === localItem.id);
+            if (remote) {
+              const status: ItemStatus = remote.status || (remote.available ? 'available' : 'unavailable');
+              return {
+                ...localItem,
+                ...remote,
+                status,
+                available: status === 'available',
+              };
+            }
+            return localItem;
+          });
+
+          // Add any remote items that were added by peers
+          remoteItems.forEach((r) => {
+            if (!merged.some((m) => m.id === r.id)) {
+              merged.push(r);
+            }
+          });
+
+          return merged;
+        });
+      }
+    });
+
+    const unsubRequests = subscribeToFirestoreRequests((remoteRequests) => {
+      if (remoteRequests && remoteRequests.length > 0) {
+        setRequests((prevReqs) => {
+          const merged = prevReqs.map((localReq) => {
+            const remote = remoteRequests.find((r) => r.id === localReq.id);
+            if (remote) {
+              return {
+                ...localReq,
+                ...remote,
+              };
+            }
+            return localReq;
+          });
+
+          remoteRequests.forEach((r) => {
+            if (!merged.some((m) => m.id === r.id)) {
+              merged.push(r);
+            }
+          });
+
+          return merged;
+        });
+      }
+    });
+
+    return () => {
+      unsubItems();
+      unsubRequests();
+    };
+  }, []);
 
   // Synchronize localStorage
   useEffect(() => {

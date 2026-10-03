@@ -15,6 +15,92 @@ const ITEMS_COLLECTION = 'items';
 const REQUESTS_COLLECTION = 'rental_requests';
 
 /**
+ * Live subscription to Firestore items collection
+ * Ensures BrowseView and Item listings always display the updated Firestore status ('unavailable', 'available', etc.)
+ * and refresh immediately after transactions.
+ */
+export function subscribeToFirestoreItems(
+  onUpdate: (remoteItems: Item[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  if (!isFirebaseConfigured()) {
+    return () => {};
+  }
+
+  try {
+    const itemsCol = collection(db, ITEMS_COLLECTION);
+    return onSnapshot(
+      itemsCol,
+      (snapshot) => {
+        const itemsList: Item[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const id = Number(docSnap.id) || Number(data.id);
+          if (id) {
+            const rawStatus: ItemStatus = data.status || (data.available ? 'available' : 'unavailable');
+            itemsList.push({
+              ...(data as Item),
+              id,
+              status: rawStatus,
+              available: rawStatus === 'available',
+            });
+          }
+        });
+        onUpdate(itemsList);
+      },
+      (err) => {
+        console.warn('[Firestore] items onSnapshot error:', err);
+        if (onError) onError(err);
+      }
+    );
+  } catch (err: any) {
+    console.warn('[Firestore] failed to bind items subscription:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Live subscription to Firestore rental requests collection
+ */
+export function subscribeToFirestoreRequests(
+  onUpdate: (remoteRequests: RentalRequest[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  if (!isFirebaseConfigured()) {
+    return () => {};
+  }
+
+  try {
+    const reqCol = collection(db, REQUESTS_COLLECTION);
+    return onSnapshot(
+      reqCol,
+      (snapshot) => {
+        const reqList: RentalRequest[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const id = Number(docSnap.id) || Number(data.id);
+          if (id) {
+            reqList.push({
+              ...(data as RentalRequest),
+              id,
+              itemId: Number(data.itemId),
+            });
+          }
+        });
+        onUpdate(reqList);
+      },
+      (err) => {
+        console.warn('[Firestore] requests onSnapshot error:', err);
+        if (onError) onError(err);
+      }
+    );
+  } catch (err: any) {
+    console.warn('[Firestore] failed to bind requests subscription:', err);
+    return () => {};
+  }
+}
+
+/**
  * Sync item to Firebase Firestore
  */
 export async function syncItemToFirestore(item: Item): Promise<void> {
@@ -47,9 +133,8 @@ export async function syncRequestToFirestore(request: RentalRequest): Promise<vo
 }
 
 /**
- * 2. Atomic Rental Request Creation
- * Uses Firebase transaction when available to prevent multiple students from
- * successfully booking the same item simultaneously.
+ * Atomic Rental Request Creation
+ * Uses Firebase transaction to prevent multiple students from booking the same item simultaneously.
  */
 export async function requestItemWithAtomicCheck(params: {
   item: Item;
@@ -58,7 +143,7 @@ export async function requestItemWithAtomicCheck(params: {
 }): Promise<{ updatedItem: Item; updatedRequest: RentalRequest }> {
   const { item, request, currentItems } = params;
 
-  // 1. Local atomic check on latest in-memory state
+  // 1. Local atomic check on latest state
   const latestItem = currentItems.find((i) => i.id === item.id) || item;
   const currentStatus: ItemStatus = latestItem.status || (latestItem.available ? 'available' : 'unavailable');
 
@@ -83,7 +168,7 @@ export async function requestItemWithAtomicCheck(params: {
     status: 'Pending',
   };
 
-  // 2. Firebase Firestore Transaction (Atomic lock on database document)
+  // 2. Firebase Firestore Transaction
   if (isFirebaseConfigured()) {
     try {
       const itemRef = doc(db, ITEMS_COLLECTION, String(item.id));
@@ -97,23 +182,22 @@ export async function requestItemWithAtomicCheck(params: {
           if (remoteStatus !== 'available') {
             throw new Error('This item was just booked or requested by another student.');
           }
-          transaction.update(itemRef, {
+          transaction.set(itemRef, {
+            ...remoteData,
             status: 'requested',
             available: false,
             currentRequestId: request.id,
             borrowedBy: request.borrowerId || request.borrower,
             borrowedByName: request.borrower,
             updatedAt: new Date().toISOString(),
-          });
+          }, { merge: true });
         } else {
-          // If document doesn't exist yet in Firestore, initialize it
           transaction.set(itemRef, {
             ...updatedItem,
             updatedAt: new Date().toISOString(),
           });
         }
 
-        // Save request record
         transaction.set(reqRef, {
           ...updatedRequest,
           updatedAt: new Date().toISOString(),
@@ -123,7 +207,7 @@ export async function requestItemWithAtomicCheck(params: {
       if (err.message && err.message.includes('booked or requested')) {
         throw err;
       }
-      console.warn('[Firebase Transaction] Network/auth warning, persisting locally:', err);
+      console.warn('[Firebase Transaction] fallback notice:', err);
     }
   }
 
@@ -131,14 +215,11 @@ export async function requestItemWithAtomicCheck(params: {
 }
 
 /**
- * 3. Confirm Handover
- * When the owner clicks "Confirm Handover":
- * - Change the item's Firebase status to "unavailable".
- * - Record the borrower ID.
- * - Update the item immediately in the Browse page.
- * - Display an "Unavailable" badge on the item.
- * - Disable the Request Item button for other students.
- * - Prevent other students from requesting this item.
+ * Confirm Handover
+ * When the lender clicks "Confirm Handover":
+ * - In one Firestore transaction, update item status to 'unavailable' (and available: false)
+ * - In the same transaction, update request status to 'Active' (handedOver: true)
+ * - Real-time listener immediately refreshes the Browse listing to 'Unavailable'
  */
 export async function confirmHandoverWithAtomicCheck(params: {
   itemId: number;
@@ -188,10 +269,18 @@ export async function confirmHandoverWithAtomicCheck(params: {
       const reqRef = doc(db, REQUESTS_COLLECTION, String(requestId));
 
       await runTransaction(db, async (transaction) => {
+        // Reads before writes (Firestore transaction requirement)
+        const itemSnap = await transaction.get(itemRef);
+        const reqSnap = await transaction.get(reqRef);
+
+        const existingItemData = itemSnap.exists() ? itemSnap.data() : targetItem;
+        const existingReqData = reqSnap.exists() ? reqSnap.data() : targetReq;
+
+        // Atomic write 1: Set item status to 'unavailable' and available to false
         transaction.set(
           itemRef,
           {
-            ...updatedItem,
+            ...existingItemData,
             status: 'unavailable',
             available: false,
             borrowedBy: borrowerId,
@@ -203,10 +292,11 @@ export async function confirmHandoverWithAtomicCheck(params: {
           { merge: true }
         );
 
+        // Atomic write 2: Set request status to 'Active' / 'Handed Over'
         transaction.set(
           reqRef,
           {
-            ...updatedRequest,
+            ...existingReqData,
             status: 'Active',
             handedOver: true,
             updatedAt: new Date().toISOString(),
@@ -214,8 +304,11 @@ export async function confirmHandoverWithAtomicCheck(params: {
           { merge: true }
         );
       });
-    } catch (err) {
-      console.warn('[Firebase] Handover transaction warning, saved locally:', err);
+
+      console.log(`[Firestore Transaction] Confirmed handover for Item #${itemId} & Request #${requestId}`);
+    } catch (err: any) {
+      console.error('[Firebase] Handover transaction failed:', err);
+      throw err;
     }
   }
 
@@ -223,13 +316,12 @@ export async function confirmHandoverWithAtomicCheck(params: {
 }
 
 /**
- * 4. Confirm Return
+ * Confirm Return
  * When the owner clicks "Confirm Return":
- * - Change the item status back to "available".
- * - Clear the borrowedBy field.
- * - Allow other students to request the item again.
- * - Update the Browse page immediately.
- * - ONLY the item owner can confirm return.
+ * - In one Firestore transaction, update item status back to 'available' (and available: true)
+ * - Clear the borrowedBy field
+ * - In the same transaction, update request status to 'Completed' (returned: true)
+ * - Real-time listener immediately refreshes the Browse listing to 'Available'
  */
 export async function confirmReturnWithAtomicCheck(params: {
   itemId: number;
@@ -279,16 +371,25 @@ export async function confirmReturnWithAtomicCheck(params: {
     reviewComment: comment || targetReq.reviewComment,
   };
 
-  // Firebase Firestore Update
+  // Firebase Firestore Update (One atomic transaction for item and request)
   if (isFirebaseConfigured()) {
     try {
       const itemRef = doc(db, ITEMS_COLLECTION, String(itemId));
       const reqRef = doc(db, REQUESTS_COLLECTION, String(requestId));
 
       await runTransaction(db, async (transaction) => {
+        // Reads before writes
+        const itemSnap = await transaction.get(itemRef);
+        const reqSnap = await transaction.get(reqRef);
+
+        const existingItemData = itemSnap.exists() ? itemSnap.data() : targetItem;
+        const existingReqData = reqSnap.exists() ? reqSnap.data() : targetReq;
+
+        // Atomic write 1: Set item status to 'available'
         transaction.set(
           itemRef,
           {
+            ...existingItemData,
             status: 'available',
             available: true,
             borrowedBy: null,
@@ -302,9 +403,11 @@ export async function confirmReturnWithAtomicCheck(params: {
           { merge: true }
         );
 
+        // Atomic write 2: Set request status to 'Completed'
         transaction.set(
           reqRef,
           {
+            ...existingReqData,
             status: 'Completed',
             returned: true,
             ratingGiven: rating || 5,
@@ -314,8 +417,11 @@ export async function confirmReturnWithAtomicCheck(params: {
           { merge: true }
         );
       });
-    } catch (err) {
-      console.warn('[Firebase] Return transaction warning, saved locally:', err);
+
+      console.log(`[Firestore Transaction] Confirmed return for Item #${itemId} & Request #${requestId}`);
+    } catch (err: any) {
+      console.error('[Firebase] Return transaction failed:', err);
+      throw err;
     }
   }
 
