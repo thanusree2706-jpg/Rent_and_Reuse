@@ -54,10 +54,10 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   const [stars, setStars] = useState<number>(5);
   const [feedback, setFeedback] = useState<string>('Item was in excellent condition and return was seamless!');
 
-  // Match status normalizing 'Accepted' to 'Approved'
+  // Match status normalizing 'Accepted' and 'Active' / 'Handed Over' to 'Approved'
   const isReqStatusMatch = (status: RequestStatus, target: 'Pending' | 'Approved' | 'Rejected' | 'Completed') => {
     if (target === 'Approved') {
-      return status === 'Approved' || status === 'Accepted';
+      return status === 'Approved' || status === 'Accepted' || status === 'Active' || status === 'Handed Over';
     }
     return status === target;
   };
@@ -294,17 +294,17 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                           </span>
                         )}
 
-                        {isApproved && req.handedOver && (
+                        {(req.status === 'Active' || req.status === 'Handed Over' || req.handedOver) && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-800 bg-rose-50 px-2.5 py-0.5 rounded border border-rose-200 shadow-2xs">
                             <Clock className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Lent Out</span>
+                            <span>Active / Handed Over</span>
                             <span className="font-normal text-rose-700">
-                              · Handed Over & Unavailable
+                              · Item Unavailable
                             </span>
                           </span>
                         )}
 
-                        {isApproved && !req.handedOver && (
+                        {(isApproved || req.status === 'Approved') && !req.handedOver && req.status !== 'Active' && req.status !== 'Handed Over' && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200 shadow-2xs">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             <span>Approved</span>
@@ -412,27 +412,27 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                     )}
 
                     {/* Owner Action: Confirm Handover when Approved and not yet handed over */}
-                    {isLender && isApproved && !req.handedOver && (
+                    {isLender && (isApproved || req.status === 'Approved') && !req.handedOver && req.status !== 'Active' && req.status !== 'Handed Over' && (
                       <button
                         type="button"
                         onClick={() => onConfirmHandover(req.id)}
-                        className="cursor-pointer px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                        className="cursor-pointer px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-all shadow-xs flex items-center gap-1.5 hover:shadow-md"
                         title="Click when you have handed over the item to the student borrower"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <CheckCircle2 className="w-4 h-4" />
                         <span>Confirm Handover</span>
                       </button>
                     )}
 
-                    {/* Owner Action: Confirm Return when item is handed over */}
-                    {isLender && req.handedOver && !isCompleted && (
+                    {/* Owner Action: Confirm Return when item is handed over / active */}
+                    {isLender && (req.handedOver || req.status === 'Active' || req.status === 'Handed Over') && !isCompleted && (
                       <button
                         type="button"
                         onClick={() => handleOpenReturnModal(req.id)}
-                        className="cursor-pointer px-4 py-1.5 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                        className="cursor-pointer px-4 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-all shadow-xs flex items-center gap-1.5 hover:shadow-md"
                         title="Click when the borrower returns the item to you"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <CheckCircle2 className="w-4 h-4" />
                         <span>Confirm Return</span>
                       </button>
                     )}
@@ -451,15 +451,15 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
                       </button>
                     )}
 
-                    {!isLender && isApproved && !req.handedOver && (
+                    {!isLender && (isApproved || req.status === 'Approved') && !req.handedOver && req.status !== 'Active' && req.status !== 'Handed Over' && (
                       <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
                         Approved · Meet owner for handover
                       </span>
                     )}
 
-                    {!isLender && req.handedOver && !isCompleted && (
+                    {!isLender && (req.handedOver || req.status === 'Active' || req.status === 'Handed Over') && !isCompleted && (
                       <span className="text-xs text-blue-700 font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200">
-                        Item with you · Return to {req.owner} when done
+                        Active Rental (Item with you) · Return to {req.owner} when done
                       </span>
                     )}
 

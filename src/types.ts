@@ -1,7 +1,7 @@
 export type Category = 'Books' | 'Electronics' | 'Sports' | 'College Supplies' | 'Other';
 export type ItemCondition = 'New' | 'Good' | 'Fair';
 export type ItemStatus = 'available' | 'requested' | 'unavailable';
-export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Accepted' | 'Completed' | 'Cancelled';
+export type RequestStatus = 'Pending' | 'Approved' | 'Active' | 'Handed Over' | 'Completed' | 'Rejected' | 'Cancelled' | 'Accepted';
 
 export interface Item {
   id: number;

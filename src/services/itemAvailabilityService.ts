@@ -177,11 +177,11 @@ export async function confirmHandoverWithAtomicCheck(params: {
 
   const updatedRequest: RentalRequest = {
     ...targetReq,
-    status: 'Approved',
+    status: 'Active',
     handedOver: true,
   };
 
-  // Firebase Firestore Update
+  // Firebase Firestore Update (One atomic transaction for item and request)
   if (isFirebaseConfigured()) {
     try {
       const itemRef = doc(db, ITEMS_COLLECTION, String(itemId));
@@ -207,7 +207,7 @@ export async function confirmHandoverWithAtomicCheck(params: {
           reqRef,
           {
             ...updatedRequest,
-            status: 'Approved',
+            status: 'Active',
             handedOver: true,
             updatedAt: new Date().toISOString(),
           },

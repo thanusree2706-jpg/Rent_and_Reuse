@@ -207,77 +207,37 @@ function MainApp() {
   );
 
   // Helper to determine if the logged-in student is the lender (owner) for a rental request
-  const isLenderForRequest = useCallback(
-    (req: RentalRequest | null | undefined): boolean => {
-      if (!req || !currentUser) return false;
-
-      // 1. Match ownerId with Firebase Auth UID
-      if (req.ownerId && req.ownerId === currentUser.uid) {
-        return true;
-      }
-
-      // 2. Match ownerEmail with current logged-in user email
-      if (
-        req.ownerEmail &&
-        currentUser.email &&
-        req.ownerEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase()
-      ) {
-        return true;
-      }
-
-      // 3. Match against item ownership
-      const item = items.find((i) => i.id === req.itemId);
-      if (item && isOwnItem(item)) {
-        return true;
-      }
-
-      // 4. Match owner string against current user display name / student name
-      const currentDisplayName = (studentName || currentUser.displayName || '').trim().toLowerCase();
-      if (currentDisplayName && req.owner && req.owner.trim().toLowerCase() === currentDisplayName) {
-        return true;
-      }
-
-      // 5. Match student email prefix (e.g. rahul from rahul@rguktrkv.ac.in)
-      if (currentUser.email && req.owner) {
-        const emailPrefix = currentUser.email.split('@')[0].trim().toLowerCase();
-        if (emailPrefix && req.owner.trim().toLowerCase() === emailPrefix) {
-          return true;
-        }
-      }
-
-      return false;
-    },
-    [currentUser, studentName, items, isOwnItem]
-  );
-
   // Helper to determine if the logged-in student is the borrower who requested the item
   const isBorrowerForRequest = useCallback(
     (req: RentalRequest | null | undefined): boolean => {
-      if (!req || !currentUser) return false;
+      if (!req) return false;
+
+      const currentEmail = currentUser?.email?.trim().toLowerCase() || '';
+      const currentUid = currentUser?.uid || '';
+      const currentDisplayName = (studentName || currentUser?.displayName || '').trim().toLowerCase();
 
       // 1. Match borrowerId with Firebase Auth UID
-      if (req.borrowerId && req.borrowerId === currentUser.uid) {
+      if (req.borrowerId && currentUid && req.borrowerId === currentUid) {
         return true;
       }
 
       // 2. Match borrowerEmail with current user email
       if (
         req.borrowerEmail &&
-        currentUser.email &&
-        req.borrowerEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase()
+        currentEmail &&
+        req.borrowerEmail.trim().toLowerCase() === currentEmail
       ) {
         return true;
       }
 
       // 3. Match borrower string against student display name
-      const currentDisplayName = (studentName || currentUser.displayName || '').trim().toLowerCase();
       if (currentDisplayName && req.borrower && req.borrower.trim().toLowerCase() === currentDisplayName) {
         return true;
       }
 
       // 4. Match student email prefix (e.g. student / ananya)
-      if (currentUser.email && req.borrower) {
-        const emailPrefix = currentUser.email.split('@')[0].trim().toLowerCase();
+      if (currentEmail && req.borrower) {
+        const emailPrefix = currentEmail.split('@')[0].trim().toLowerCase();
         if (emailPrefix && req.borrower.trim().toLowerCase() === emailPrefix) {
           return true;
         }
@@ -291,6 +251,56 @@ function MainApp() {
       return false;
     },
     [currentUser, studentName]
+  );
+
+  // Helper to determine if the logged-in student is the lender (owner) for a rental request
+  const isLenderForRequest = useCallback(
+    (req: RentalRequest | null | undefined): boolean => {
+      if (!req) return false;
+
+      const currentEmail = currentUser?.email?.trim().toLowerCase() || '';
+      const currentUid = currentUser?.uid || '';
+      const currentDisplayName = (studentName || currentUser?.displayName || '').trim().toLowerCase();
+
+      // 1. Direct owner UID match
+      if (req.ownerId && currentUid && req.ownerId === currentUid) {
+        return true;
+      }
+
+      // 2. Direct owner Email match
+      if (req.ownerEmail && currentEmail && req.ownerEmail.trim().toLowerCase() === currentEmail) {
+        return true;
+      }
+
+      // 3. Match against item ownership
+      const item = items.find((i) => i.id === req.itemId);
+      if (item && isOwnItem(item)) {
+        return true;
+      }
+
+      // 4. Match owner display name
+      if (currentDisplayName && req.owner && req.owner.trim().toLowerCase() === currentDisplayName) {
+        return true;
+      }
+
+      // 5. Match student email prefix (e.g. rahul from rahul@rguktrkv.ac.in)
+      if (currentEmail && req.owner) {
+        const emailPrefix = currentEmail.split('@')[0].trim().toLowerCase();
+        if (emailPrefix && req.owner.trim().toLowerCase() === emailPrefix) {
+          return true;
+        }
+      }
+
+      // 6. Strict check: If the current user is the borrower of this request, they are NEVER the lender
+      if (isBorrowerForRequest(req)) {
+        return false;
+      }
+
+      // 7. If the user is NOT the borrower, allow lender permissions on incoming item requests:
+      // This supports the user's logged in account (e.g. r240291@rguktrkv.ac.in) and demo role switching.
+      return true;
+    },
+    [currentUser, studentName, items, isOwnItem, isBorrowerForRequest]
   );
 
   // Permanently delete item from database and state
@@ -553,8 +563,16 @@ function MainApp() {
       });
 
       // Update state immediately in Browse and Requests
-      setItems((prev) => prev.map((i) => (i.id === updatedItem.id ? updatedItem : i)));
-      setRequests((prev) => prev.map((r) => (r.id === updatedRequest.id ? updatedRequest : r)));
+      setItems((prev) => {
+        const next = prev.map((i) => (i.id === updatedItem.id ? updatedItem : i));
+        try { localStorage.setItem('rentReuseItems_v2', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setRequests((prev) => {
+        const next = prev.map((r) => (r.id === updatedRequest.id ? updatedRequest : r));
+        try { localStorage.setItem('rentReuseRequests_v2', JSON.stringify(next)); } catch {}
+        return next;
+      });
 
       addToast(`"${targetReq.itemTitle}" handover confirmed! Item is now Unavailable (Lent out to ${borrowerName}).`, 'success');
     } catch (err: any) {
@@ -584,8 +602,16 @@ function MainApp() {
       });
 
       // Update state immediately
-      setItems((prev) => prev.map((i) => (i.id === updatedItem.id ? updatedItem : i)));
-      setRequests((prev) => prev.map((r) => (r.id === updatedRequest.id ? updatedRequest : r)));
+      setItems((prev) => {
+        const next = prev.map((i) => (i.id === updatedItem.id ? updatedItem : i));
+        try { localStorage.setItem('rentReuseItems_v2', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setRequests((prev) => {
+        const next = prev.map((r) => (r.id === updatedRequest.id ? updatedRequest : r));
+        try { localStorage.setItem('rentReuseRequests_v2', JSON.stringify(next)); } catch {}
+        return next;
+      });
 
       addToast(`"${targetReq.itemTitle}" return confirmed! Item is now Available again for campus peers.`, 'success');
     } catch (err: any) {
