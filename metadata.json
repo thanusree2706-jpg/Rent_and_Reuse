@@ -1,0 +1,6 @@
+{
+  "name": "Rent & Reuse",
+  "description": "Student peer-to-peer campus rental and item-sharing platform. Rent books, electronics, sports gear, and college supplies affordably.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
